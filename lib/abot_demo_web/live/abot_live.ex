@@ -540,10 +540,15 @@ defmodule AbotDemoWeb.AbotLive do
         <div>
           <dt>Checked</dt><dd>{@selected.checked}</dd>
         </div>
-        <div>
-          <dt>Source</dt><dd>{@selected.source}</dd>
+        <div class="trust-row-expanded">
+          <dt>Source</dt>
+          <dd>
+            <a class="source-link" href={@selected.source} target="_blank" rel="noreferrer">
+              Open official source <.icon name="hero-arrow-top-right-on-square-mini" class="size-4" />
+            </a>
+          </dd>
         </div>
-        <div>
+        <div class="trust-row-expanded">
           <dt>Note</dt><dd>{@selected.note}</dd>
         </div>
       </dl>
