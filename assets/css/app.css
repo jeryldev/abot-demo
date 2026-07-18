@@ -1226,6 +1226,10 @@ textarea {
   line-height: 1.35;
 }
 
+.provider-line {
+  margin: 16px 0 0;
+}
+
 .small-label,
 .source-line,
 .field-row span,

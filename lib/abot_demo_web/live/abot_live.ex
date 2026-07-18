@@ -481,7 +481,7 @@ defmodule AbotDemoWeb.AbotLive do
       <section class="application-panel">
         <p class="small-label">Match detail</p>
         <h1>{@selected.full_name}</h1>
-        <p class="muted">{@selected.provider}</p>
+        <p class="muted provider-line">{@selected.provider}</p>
 
         <div class="reason-grid">
           <div>
