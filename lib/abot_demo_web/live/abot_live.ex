@@ -1,6 +1,8 @@
 defmodule AbotDemoWeb.AbotLive do
   use AbotDemoWeb, :live_view
 
+  alias AbotDemo.Scholarships
+
   @student %{
     name: "Ana Reyes",
     level: "Grade 12, graduating SY 2025-26",
@@ -12,73 +14,6 @@ defmodule AbotDemoWeb.AbotLive do
     school: "Public senior high school",
     situation: "At risk of not enrolling without financial support"
   }
-
-  @opportunities [
-    %{
-      id: "ched",
-      rank: "1",
-      program: "CHED Merit Scholarship",
-      full_name: "CHED Merit Scholarship Program (CMSP)",
-      kind: "Scholarship",
-      provider: "Commission on Higher Education (CHED)",
-      chip: "Due soon · 31 Jul",
-      chip_style: "chip chip-amber",
-      status: "Open - apply by 31 Jul 2026",
-      verification: "official source",
-      checked: "18 Jul 2026",
-      source: "ched.gov.ph / regional CHED offices",
-      fit:
-        "94% average clears the 93% GWA minimum, IT is a priority course, income within the need band.",
-      blocker: "Needs >=93% GWA (you're at 94%) and priority-course enrolment.",
-      detail_blockers: [
-        "needs >=93% GWA (you're at 94%)",
-        "CHED priority-course enrolment",
-        "can't hold another government scholarship"
-      ],
-      note:
-        "Open in multiple regional CHED offices; central/legacy pages may lag - we show the discrepancy, not a guess.",
-      action: "Prepare this application"
-    },
-    %{
-      id: "dost",
-      rank: "2",
-      program: "DOST-SEI Undergraduate (S&T)",
-      full_name: "DOST-SEI Undergraduate Scholarship (S&T)",
-      kind: "Scholarship",
-      provider: "DOST - Science Education Institute",
-      chip: "Opens next cycle",
-      chip_style: "chip chip-blue",
-      status: "Closed now - next cycle ~Oct 2026",
-      verification: "official source",
-      checked: "18 Jul 2026",
-      source: "science-scholarships.ph",
-      fit: "Full S&T scholarship, IT qualifies, your income fits the RA 7687 track.",
-      blocker: "You'll need to pass the DOST exam (~Feb). Start prepping now.",
-      detail_blockers: ["must sit and pass the DOST-SEI exam", "next cycle opens ~Oct 2026"],
-      note: "The 2026 cycle is over; this is a prepare-now path for the next application window.",
-      action: "Add to my next-cycle plan"
-    },
-    %{
-      id: "bagong",
-      rank: "3",
-      program: "\"Bagong Pilipinas Merit Scholarship\"",
-      full_name: "\"Bagong Pilipinas Merit Scholarship\"",
-      kind: "Claimed scholarship",
-      provider: "Claimed government-linked",
-      chip: "Flagged",
-      chip_style: "chip chip-flagged",
-      status: "We couldn't verify this.",
-      verification: "sources conflict",
-      checked: "18 Jul 2026",
-      source: "Aggregator sites only",
-      fit: "Unknown - cannot assess until confirmed.",
-      blocker: "Existence and terms are unconfirmed.",
-      detail_blockers: ["existence unconfirmed", "terms unconfirmed", "deadline unknown"],
-      note:
-        "It appears on scholarship websites, but we could not confirm it on an official source. We won't recommend action until we can.",
-      action: "Why is this flagged?"
-    }
-  ]
 
   @requirements [
     %{id: "cards", label: "Grade 11 & Grade 12 (1st sem) report cards"},
@@ -99,19 +34,22 @@ defmodule AbotDemoWeb.AbotLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    opportunities = Scholarships.recommendations(@student)
+    selected = List.first(opportunities)
+
     {:ok,
      assign(socket,
        page_title: "Abot",
        screen: :intake,
        student: @student,
-       opportunities: @opportunities,
-       selected_id: "ched",
+       opportunities: opportunities,
+       selected_id: selected.id,
        requirements: @requirements,
        readiness: @initial_readiness,
        toast: nil,
        copied: false,
        letter_open: false,
-       letter: fallback_letter(@student),
+       letter: fallback_letter(@student, selected),
        letter_status: :idle
      )}
   end
@@ -159,14 +97,15 @@ defmodule AbotDemoWeb.AbotLive do
 
   def handle_event("draft_letter", _params, socket) do
     caller = self()
+    opportunity = selected(socket.assigns)
 
     Task.start(fn ->
       result =
         AbotDemo.OpenAI.draft_request_letter(%{
           student: socket.assigns.student,
-          scholarship: "CHED Merit Scholarship",
+          scholarship: opportunity.full_name,
           document: "Barangay Certificate of Indigency",
-          deadline: "31 July 2026"
+          deadline: opportunity.deadline || "the provider's current application window"
         })
 
       send(caller, {:letter_drafted, result})
@@ -190,7 +129,7 @@ defmodule AbotDemoWeb.AbotLive do
   def handle_info({:letter_drafted, {:error, _reason}}, socket) do
     {:noreply,
      assign(socket,
-       letter: fallback_letter(socket.assigns.student),
+       letter: fallback_letter(socket.assigns.student, selected(socket.assigns)),
        letter_open: true,
        letter_status: :fallback,
        toast: "Live drafting is unavailable, so Abot prepared its offline fallback."
@@ -207,7 +146,25 @@ defmodule AbotDemoWeb.AbotLive do
       |> Map.take(Enum.map(Map.keys(@student), &Atom.to_string/1))
       |> Map.new(fn {key, value} -> {String.to_existing_atom(key), value} end)
 
-    assign(socket, :student, Map.merge(socket.assigns.student, permitted_updates))
+    student = Map.merge(socket.assigns.student, permitted_updates)
+    opportunities = Scholarships.recommendations(student)
+
+    selected =
+      Enum.find(opportunities, &(&1.id == socket.assigns.selected_id)) ||
+        List.first(opportunities)
+
+    socket =
+      assign(socket,
+        student: student,
+        opportunities: opportunities,
+        selected_id: selected.id
+      )
+
+    if socket.assigns.letter_status == :idle do
+      assign(socket, :letter, fallback_letter(student, selected))
+    else
+      socket
+    end
   end
 
   defp ready_count(readiness) do
@@ -228,11 +185,18 @@ defmodule AbotDemoWeb.AbotLive do
     if current == value, do: "toggle-option selected", else: "toggle-option"
   end
 
-  defp fallback_letter(student) do
+  defp fallback_letter(student, opportunity) do
+    deadline =
+      if opportunity.deadline do
+        "The official tracker lists #{format_date(opportunity.deadline)} as the application deadline."
+      else
+        "I will confirm the provider's current application window before submitting my application."
+      end
+
     """
     To the Office of the Barangay Captain,
 
-    I am #{student.name}, a #{student.level} student and resident of #{student.location}, applying for the CHED Merit Scholarship. I respectfully request a Barangay Certificate of Indigency to complete my application, which is due 31 July 2026.
+    I am #{student.name}, a #{student.level} student and resident of #{student.location}, preparing an application for #{opportunity.full_name}. I respectfully request a Barangay Certificate of Indigency as part of my scholarship requirements. #{deadline}
 
     Thank you for your kind assistance.
 
@@ -241,25 +205,9 @@ defmodule AbotDemoWeb.AbotLive do
     """
   end
 
-  defp format_income(income) do
-    income
-    |> String.replace(~r/\D/, "")
-    |> String.reverse()
-    |> String.graphemes()
-    |> Enum.chunk_every(3)
-    |> Enum.map_join(",", &Enum.join/1)
-    |> String.reverse()
-  end
-
-  defp blockers_for(%{id: "ched"}, student) do
-    [
-      "minimum: >=93% GWA (you entered #{student.grade}%)",
-      "CHED priority-course enrolment",
-      "can't hold another government scholarship"
-    ]
-  end
-
   defp blockers_for(selected, _student), do: selected.detail_blockers
+
+  defp format_date(date), do: Calendar.strftime(Date.from_iso8601!(date), "%d %b %Y")
 
   @impl true
   def render(assigns) do
@@ -348,6 +296,7 @@ defmodule AbotDemoWeb.AbotLive do
                   copied={@copied}
                   letter_status={@letter_status}
                   student={@student}
+                  selected={@selected}
                 />
             <% end %>
           </section>
@@ -482,13 +431,13 @@ defmodule AbotDemoWeb.AbotLive do
         <h1>{@student.name}, here are your 3 next moves</h1>
         <p>Ranked by what to do first.</p>
         <div class="trust-strip">
-          Abot refuses to pretend — 1 open, 1 for next cycle, 1 we couldn't verify.
+          These leads come from Abot's official-source tracker. Each card shows whether its current window is open, upcoming, or still needs confirmation.
         </div>
       </section>
 
       <section class="ranked-rows" aria-label="Ranked scholarship actions">
         <%= for item <- @opportunities do %>
-          <article class={"ranked-row #{if item.id == "bagong", do: "flagged", else: ""}"}>
+          <article class="ranked-row">
             <div class="rank">{item.rank}</div>
             <div class="row-main">
               <div class="row-heading">
@@ -499,43 +448,18 @@ defmodule AbotDemoWeb.AbotLive do
                 <span class={item.chip_style}>{item.chip}</span>
               </div>
 
-              <%= if item.id == "ched" do %>
-                <p class="row-line">
-                  Profile basis: {@student.grade}% average · {@student.course} · PHP {format_income(
-                    @student.income
-                  )} household income
-                </p>
-                <p class="source-line">official source · checked 18 Jul 2026</p>
-              <% end %>
-
-              <%= if item.id == "dost" do %>
-                <p class="row-line">Closed now, opens ~Oct 2026 · prep for the Feb exam</p>
-                <p class="source-line">official source · checked 18 Jul 2026</p>
-              <% end %>
-
-              <%= if item.id == "bagong" do %>
-                <p class="row-line">
-                  Shows up on scholarship sites, but we couldn't confirm it on an official source. We won't tell you to act on it yet.
-                </p>
-                <p class="source-line">sources conflict · checked 18 Jul 2026</p>
-              <% end %>
+              <p class="row-line">{item.fit}</p>
+              <p class="source-line">{item.verification} · checked {item.checked}</p>
             </div>
 
             <div class="row-action">
-              <%= cond do %>
-                <% item.id == "ched" -> %>
-                  <button class="primary-button" phx-click="select" phx-value-id={item.id}>
-                    Prepare application
-                  </button>
-                <% item.id == "dost" -> %>
-                  <button class="secondary-button" phx-click="select" phx-value-id={item.id}>
-                    Add to plan
-                  </button>
-                <% true -> %>
-                  <button class="quiet-link" phx-click="select" phx-value-id={item.id}>
-                    Why is this flagged?
-                  </button>
-              <% end %>
+              <button
+                class={if item.status_group == :open, do: "primary-button", else: "secondary-button"}
+                phx-click="select"
+                phx-value-id={item.id}
+              >
+                {item.action}
+              </button>
             </div>
           </article>
         <% end %>
@@ -636,6 +560,7 @@ defmodule AbotDemoWeb.AbotLive do
   attr :copied, :boolean, required: true
   attr :letter_status, :atom, required: true
   attr :student, :map, required: true
+  attr :selected, :map, required: true
 
   def checklist(assigns) do
     ~H"""
@@ -643,7 +568,7 @@ defmodule AbotDemoWeb.AbotLive do
       <section class="application-panel">
         <div class="screen-heading compact">
           <p class="small-label">04 / Readiness checklist</p>
-          <h1>What you'll need for CHED Merit</h1>
+          <h1>What you'll need for {@selected.program}</h1>
           <p>Use simple readiness toggles. No uploads needed.</p>
         </div>
 

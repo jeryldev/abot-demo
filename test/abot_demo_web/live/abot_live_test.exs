@@ -22,14 +22,15 @@ defmodule AbotDemoWeb.AbotLiveTest do
     |> render_submit()
 
     assert render(view) =~ "Mika Santos, here are your 3 next moves"
-    assert render(view) =~ "Profile basis: 96% average · BS Computer Science · PHP 220,000"
+    assert render(view) =~ "official-source tracker"
+    assert render(view) =~ "2027 announced / verify RO"
 
     view
     |> element("button[phx-value-id='ched']")
     |> render_click()
 
     assert render(view) =~ "CHED Merit Scholarship Program (CMSP)"
-    assert render(view) =~ "you entered 96%"
+    assert render(view) =~ "Filipino first-year applicants"
 
     view
     |> element("button.primary-button[phx-value-screen='checklist']")
