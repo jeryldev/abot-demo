@@ -23,15 +23,16 @@ The product is not a scholarship directory and does not promise an award decisio
 ### Used now, because it directly supports the core job
 
 1. **Codex with GPT-5.6** built and iterated the product. The evidence is visible in the source, testing, visual QA, and this task's `/feedback` session.
-2. **Responses API with GPT-5.6** drafts the missing-document letter server-side. It uses the student's submitted context, does not expose the API key to the browser, runs asynchronously, and has an explicit offline fallback.
-3. **Codex browser, image-input, and visual QA workflow** was used to catch real layout failures, including mobile overflow, collapsed callout padding, and over-rounded controls. These are Codex-craft evidence, not decorative claims.
+2. **Responses API with GPT-5.6 Structured Outputs** ranks up to three verified tracker records from a privacy-minimized profile. It excludes the student's name and raw income, uses `store: false`, and server-validates every returned candidate ID before a result can render.
+3. **Responses API with GPT-5.6** drafts the missing-document letter server-side. It uses the student's submitted context, does not expose the API key to the browser, runs asynchronously, and has an explicit offline fallback.
+4. **Codex browser, image-input, and visual QA workflow** was used to catch real layout failures, including mobile overflow, collapsed callout padding, and over-rounded controls. These are Codex-craft evidence, not decorative claims.
 
 ### Relevant next only when we connect the live verifier
 
 1. **Responses API web search with official-domain filters** should refresh a scholarship's verification state from provider pages and retain the returned source URLs. The model should be constrained to official agency or university domains and should never turn a search result into a recommendation without an official source. OpenAI's web-search tool supports domain filters and source inspection. [Web search guide](https://developers.openai.com/api/docs/guides/tools-web-search)
-2. **Structured Outputs** should return a fixed verification record such as `confirmed`, `conflicting`, or `unverified`, plus a short reason and source references. This prevents a free-form model response from silently changing the product's trust state. [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
+2. **Structured Outputs for verification** should return a fixed record such as `confirmed`, `conflicting`, or `unverified`, plus a short reason and source references. The live matcher already uses Structured Outputs for ranking, but provider-page verification remains a distinct future capability. [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs)
 
-Do not claim these two capabilities are already live until the app can demonstrate them with an API key and retained official-source evidence.
+Do not claim live provider-page verification until the app can demonstrate it with an API key and retained official-source evidence.
 
 ### Deliberate non-features
 

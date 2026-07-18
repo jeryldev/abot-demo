@@ -19,7 +19,11 @@ defmodule AbotDemoWeb.AbotLiveTest do
         grade: "96"
       }
     )
-    |> render_submit()
+    |> render_change()
+
+    view
+    |> element("button[phx-value-screen='plan']")
+    |> render_click()
 
     assert render(view) =~ "Mika Santos, here are your 3 next moves"
     assert render(view) =~ "official-source tracker"

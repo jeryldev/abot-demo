@@ -1,7 +1,7 @@
 defmodule AbotDemoWeb.AbotLive do
   use AbotDemoWeb, :live_view
 
-  alias AbotDemo.Scholarships
+  alias AbotDemo.{OpenAI, Scholarships}
 
   @student %{
     name: "Ana Reyes",
@@ -37,13 +37,34 @@ defmodule AbotDemoWeb.AbotLive do
        letter_open: false,
        letter_document: @default_request_document,
        letter: fallback_letter(@student, selected, @default_request_document),
-       letter_status: :idle
+       letter_status: :idle,
+       match_status: :idle,
+       match_profile: nil
      )}
   end
 
   @impl true
-  def handle_event("go", %{"screen" => screen} = params, socket) do
-    socket = update_student(socket, Map.get(params, "student", %{}))
+  def handle_event("go", %{"screen" => "plan", "student" => student}, socket) do
+    socket = update_student(socket, student)
+    profile = OpenAI.matching_profile(socket.assigns.student)
+    candidates = Scholarships.matching_candidates()
+    caller = self()
+
+    Task.start(fn ->
+      result = OpenAI.rank_scholarships(profile, Enum.map(candidates, & &1.summary))
+      send(caller, {:matches_ranked, profile, candidates, result})
+    end)
+
+    {:noreply,
+     assign(socket,
+       screen: :plan,
+       match_status: :matching,
+       match_profile: profile,
+       toast: "Comparing your profile with verified scholarship records."
+     )}
+  end
+
+  def handle_event("go", %{"screen" => screen}, socket) do
     {:noreply, assign(socket, screen: String.to_existing_atom(screen), toast: nil)}
   end
 
@@ -144,6 +165,37 @@ defmodule AbotDemoWeb.AbotLive do
      )}
   end
 
+  def handle_info({:matches_ranked, profile, candidates, {:ok, match}}, socket) do
+    if socket.assigns.match_profile == profile do
+      case Scholarships.recommendations_from_match(socket.assigns.student, candidates, match) do
+        {:ok, opportunities} ->
+          selected = List.first(opportunities)
+
+          {:noreply,
+           socket
+           |> assign(
+             opportunities: opportunities,
+             match_status: :generated
+           )
+           |> select_opportunity(selected)
+           |> assign(toast: "Your verified scholarship plan is ready.")}
+
+        {:error, _reason} ->
+          {:noreply, assign(socket, match_status: :fallback, toast: fallback_match_toast())}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:matches_ranked, profile, _candidates, {:error, _reason}}, socket) do
+    if socket.assigns.match_profile == profile do
+      {:noreply, assign(socket, match_status: :fallback, toast: fallback_match_toast())}
+    else
+      {:noreply, socket}
+    end
+  end
+
   defp selected(assigns) do
     Enum.find(assigns.opportunities, &(&1.id == assigns.selected_id))
   end
@@ -166,7 +218,9 @@ defmodule AbotDemoWeb.AbotLive do
       |> assign(
         student: student,
         opportunities: opportunities,
-        selected_id: selected.id
+        selected_id: selected.id,
+        match_status: :idle,
+        match_profile: nil
       )
       |> select_opportunity(selected)
 
@@ -216,6 +270,10 @@ defmodule AbotDemoWeb.AbotLive do
 
   defp readiness_progress(ready_count, requirement_count),
     do: ready_count / requirement_count * 100
+
+  defp fallback_match_toast do
+    "AI matching is unavailable, so Abot is showing its verified tracker fallback."
+  end
 
   defp step_class(current, step) do
     if current == step, do: "nav-step active", else: "nav-step"
@@ -328,7 +386,11 @@ defmodule AbotDemoWeb.AbotLive do
               <% :intake -> %>
                 <.intake student={@student} />
               <% :plan -> %>
-                <.plan opportunities={@opportunities} student={@student} />
+                <.plan
+                  opportunities={@opportunities}
+                  student={@student}
+                  match_status={@match_status}
+                />
               <% :detail -> %>
                 <.detail selected={@selected} student={@student} />
               <% :checklist -> %>
@@ -469,6 +531,7 @@ defmodule AbotDemoWeb.AbotLive do
 
   attr :opportunities, :list, required: true
   attr :student, :map, required: true
+  attr :match_status, :atom, required: true
 
   def plan(assigns) do
     ~H"""
@@ -478,7 +541,16 @@ defmodule AbotDemoWeb.AbotLive do
         <h1>{@student.name}, here are your 3 next moves</h1>
         <p>Ranked by what to do first.</p>
         <div class="trust-strip">
-          These leads come from Abot's official-source tracker. Each card shows whether its current window is open, upcoming, or still needs confirmation.
+          <%= case @match_status do %>
+            <% :matching -> %>
+              Comparing your privacy-minimized profile with verified provider criteria.
+            <% :generated -> %>
+              AI-assisted ranking uses privacy-minimized profile details. Provider criteria and sources remain the final reference.
+            <% :fallback -> %>
+              Live AI matching is unavailable. These verified tracker leads are shown as a conservative fallback.
+            <% _ -> %>
+              These leads come from Abot's official-source tracker. Each card shows whether its current window is open, upcoming, or still needs confirmation.
+          <% end %>
         </div>
       </section>
 

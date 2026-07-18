@@ -9,9 +9,9 @@ It is deliberately not a scholarship directory. Its core job is to turn one stud
 The included sample student, Ana Reyes, is an incoming public-school college student in Quezon City.
 
 1. Open the profile and see the student context.
-2. Move to the ranked plan. Abot separates an open CHED path, a DOST next-cycle path, and a claim it will not verify.
-3. Open CHED Merit to see why Ana fits, the exact blockers, and the evidence behind the recommendation.
-4. Build the checklist, mark the Certificate of Indigency as missing, generate a tailored request letter, edit it, and copy the final text. The UI labels whether the letter came from a live OpenAI response or the offline fallback.
+2. Submit the profile to receive an AI-assisted ranking drawn only from verified tracker records. The matcher receives no name or raw household income.
+3. Open a scholarship to see the source-backed blockers, requirements, and evidence behind the recommendation.
+4. Build the record-specific checklist, mark a document as missing, generate a tailored request letter, edit it, and copy the final text. The UI labels whether a result came from a live OpenAI response or the offline fallback.
 
 The trust boundary is part of the product: Abot refuses to turn an unverified listing into a recommendation.
 
@@ -24,7 +24,7 @@ mix phx.server
 
 Open [http://localhost:4000](http://localhost:4000).
 
-The demo works without a key, using a clearly labelled offline fallback letter. To enable the live request-letter draft, add these values to `.env` and restart the Phoenix server:
+The demo works without a key, using verified tracker fallbacks. To enable live profile ranking and request-letter drafting, add these values to `.env` and restart the Phoenix server:
 
 ```bash
 OPENAI_API_KEY=your_key_here
@@ -43,10 +43,10 @@ For a submission, add the Codex `/feedback` session ID to the Devpost form and k
 
 ## Deliberate Boundaries
 
-- The current build uses a deterministic sample student and a checked-in tracker generated from the `Scholarships` sheet of `abot-2026-2027-scholarship-opportunities.xlsx`: 47 official-source rows last verified on 18 Jul 2026. The app keeps the source URL, date, and data-quality note for every ranked lead.
+- The tracker was generated from the `Scholarships` sheet of `abot-2026-2027-scholarship-opportunities.xlsx`: 47 official-source rows last verified on 18 Jul 2026. The matcher receives only privacy-minimized applicant context and can return only tracker candidate IDs; the app validates those IDs before rendering a lead.
 - A regional opening is never treated as nationwide. For example, a Quezon City student sees the CHED regional-window check rather than a false claim that the MIMAROPA or Caraga CMSP window is open to them.
 - It does not claim to submit an application or send a report to an external verification queue.
-- A live model is restricted to drafting the request letter from the supplied student, document, scholarship, and deadline context. It must not invent scholarship terms or deadlines.
+- Live OpenAI calls run server-side with `store: false`. Matching excludes the student's name and raw income; the letter draft receives the name only because it must be addressed and signed by the student. Neither call may invent scholarship terms or deadlines.
 
 ## Verification
 

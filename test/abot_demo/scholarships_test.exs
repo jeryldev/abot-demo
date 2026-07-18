@@ -27,4 +27,43 @@ defmodule AbotDemo.ScholarshipsTest do
              "source_workbook" => "abot-2026-2027-scholarship-opportunities.xlsx"
            }
   end
+
+  test "only turns known tracker candidates into AI-ranked opportunities" do
+    student = %{
+      name: "Ana Reyes",
+      location: "Quezon City",
+      course: "BS Information Technology"
+    }
+
+    [candidate | _rest] = Scholarships.matching_candidates()
+
+    match = %{
+      "summary" =>
+        "The tracker contains options that should be checked against official criteria.",
+      "recommendations" => [
+        %{
+          "candidate_id" => candidate.id,
+          "fit_reason" =>
+            "The listed target applicants align with the submitted academic context.",
+          "caution" => "Confirm all official provider criteria before applying."
+        },
+        %{
+          "candidate_id" => "made-up-program",
+          "fit_reason" => "This must never render.",
+          "caution" => "This must never render."
+        }
+      ]
+    }
+
+    assert {:ok, [recommendation]} =
+             Scholarships.recommendations_from_match(student, [candidate], match)
+
+    assert recommendation.id == candidate.id
+
+    assert recommendation.fit ==
+             "The listed target applicants align with the submitted academic context."
+
+    assert recommendation.match_caution ==
+             "Confirm all official provider criteria before applying."
+  end
 end
