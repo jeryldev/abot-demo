@@ -1,15 +1,20 @@
 defmodule AbotDemo.Scholarships do
   @moduledoc false
 
+  alias AbotDemo.Repo
+  alias AbotDemo.Tracker.ScholarshipRecord
+
   @dataset_path Path.expand("../../priv/data/verified_scholarships.json", __DIR__)
   @dataset @dataset_path |> File.read!() |> Jason.decode!()
   @records @dataset["records"]
 
   def recommendations(student) do
+    records = records()
+
     [
-      {"ched", ched_for(student), 1},
-      {"dost", dost_for(), 2},
-      {"local", local_for(student), 3}
+      {"ched", ched_for(records, student), 1},
+      {"dost", dost_for(records), 2},
+      {"local", local_for(records, student), 3}
     ]
     |> Enum.map(fn {id, record, rank} -> to_opportunity(record, id, rank, student) end)
   end
@@ -18,43 +23,52 @@ defmodule AbotDemo.Scholarships do
     Map.take(@dataset, ["source_workbook", "source_sheet", "imported_on"])
   end
 
-  defp ched_for(student) do
+  defp ched_for(records, student) do
     regional_open =
-      find_record(fn record ->
+      find_record(records, fn record ->
         record["program_name"] == "CHED Merit Scholarship Program (CMSP)" and
           record["status_as_of_2026_07_18"] == "Open" and
           location_matches?(record, student.location)
       end)
 
     regional_open ||
-      find_record(fn record ->
+      find_record(records, fn record ->
         record["provider"] == "CHED" and
           record["program_name"] == "CHED Merit Scholarship Program (CMSP)" and
           String.contains?(record["status_as_of_2026_07_18"], "2027")
       end)
   end
 
-  defp dost_for do
-    find_record(fn record ->
+  defp dost_for(records) do
+    find_record(records, fn record ->
       record["provider"] == "DOST-SEI" and
         record["program_name"] == "S&T Undergraduate Scholarships" and
         String.contains?(record["status_as_of_2026_07_18"], "2027")
     end)
   end
 
-  defp local_for(student) do
-    find_record(fn record ->
+  defp local_for(records, student) do
+    find_record(records, fn record ->
       record["provider"] not in ["CHED", "DOST-SEI"] and
         location_matches?(record, student.location) and
         not String.starts_with?(record["status_as_of_2026_07_18"], "Closed")
     end) ||
-      find_record(fn record ->
+      find_record(records, fn record ->
         record["provider"] == "UniFAST / CHED" and
           record["program_name"] == "Tertiary Education Subsidy (TES)"
       end)
   end
 
-  defp find_record(predicate), do: Enum.find(@records, predicate)
+  defp records do
+    if Application.get_env(:abot_demo, :database_enabled, false) do
+      Repo.all(ScholarshipRecord)
+      |> Enum.map(& &1.raw_data)
+    else
+      @records
+    end
+  end
+
+  defp find_record(records, predicate), do: Enum.find(records, predicate)
 
   defp location_matches?(record, location) do
     location = String.downcase(location)

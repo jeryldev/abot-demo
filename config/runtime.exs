@@ -23,6 +23,44 @@ end
 config :abot_demo, AbotDemoWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+dotenv_value = fn key ->
+  with {:ok, contents} <- File.read(Path.join(File.cwd!(), ".env")) do
+    Enum.find_value(String.split(contents, ~r/\R/, trim: true), fn line ->
+      case String.split(line, "=", parts: 2) do
+        [^key, value] -> value |> String.trim() |> String.trim("\"")
+        _ -> nil
+      end
+    end)
+  end
+end
+
+database_url = System.get_env("DATABASE_URL") || dotenv_value.("DATABASE_URL")
+
+if database_url && config_env() == :prod do
+  socket_options =
+    case URI.parse(database_url).host do
+      "db." <> _project_ref -> [:inet6]
+      _host -> []
+    end
+
+  repo_options =
+    [
+      url: database_url,
+      ssl: true,
+      pool_size: String.to_integer(System.get_env("POOL_SIZE", "5"))
+    ]
+    |> then(fn options ->
+      if socket_options == [],
+        do: options,
+        else: Keyword.put(options, :socket_options, socket_options)
+    end)
+
+  config :abot_demo,
+    database_enabled: true
+
+  config :abot_demo, AbotDemo.Repo, repo_options
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

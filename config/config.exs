@@ -8,7 +8,11 @@
 import Config
 
 config :abot_demo,
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  database_enabled: false,
+  ecto_repos: [AbotDemo.Repo]
+
+config :abot_demo, AbotDemo.Repo, adapter: Ecto.Adapters.Postgres
 
 # Configure the endpoint
 config :abot_demo, AbotDemoWeb.Endpoint,

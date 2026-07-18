@@ -7,6 +7,9 @@ app = 'abot-scholarship-demo-2026'
 primary_region = 'sin'
 kill_signal = 'SIGTERM'
 
+[deploy]
+  release_command = '/app/bin/abot_demo eval "AbotDemo.Release.migrate_and_seed()"'
+
 [build]
 
 [env]
