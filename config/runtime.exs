@@ -46,7 +46,9 @@ if database_url && config_env() == :prod do
   repo_options =
     [
       url: database_url,
-      ssl: true,
+      # Supabase's direct endpoint requires TLS, but its CA is not present in
+      # the Erlang bundle inside the minimal Fly image.
+      ssl: [verify: :verify_none],
       pool_size: String.to_integer(System.get_env("POOL_SIZE", "5"))
     ]
     |> then(fn options ->
