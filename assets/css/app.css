@@ -1779,6 +1779,41 @@ textarea {
   padding: 20px;
 }
 
+.letter-request-form {
+  display: grid;
+  gap: 12px;
+}
+
+.document-request-field {
+  display: grid;
+  gap: 8px;
+}
+
+.document-request-field > span {
+  color: var(--muted-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.document-request-field input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--ink);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.document-request-field input:focus {
+  border-color: var(--indigo);
+  outline: 2px solid rgba(46, 58, 126, 0.15);
+  outline-offset: 1px;
+}
+
 .letter-panel {
   border-top: 1px solid var(--hairline-soft);
   padding: 28px;

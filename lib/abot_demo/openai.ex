@@ -18,10 +18,11 @@ defmodule AbotDemo.OpenAI do
         store: false,
         max_output_tokens: 320,
         instructions: """
-        Draft a short, formal request letter in plain text for a Philippine barangay office.
-        Use only the facts supplied. Do not invent a barangay name, documents, eligibility,
-        addresses, or contact details. Include a polite subject line, a concise request, and a
-        respectful closing. The letter will be reviewed and edited by the student before use.
+        Draft a short, formal request letter in plain text for the relevant Philippine public,
+        school, or records office. Use only the facts supplied. Do not invent a recipient,
+        office name, documents, eligibility, addresses, or contact details. Use "To whom it may
+        concern" when no recipient is supplied. Include a polite subject line, a concise request,
+        and a respectful closing. The letter will be reviewed and edited by the student before use.
         """,
         input: prompt(context)
       }

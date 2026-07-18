@@ -101,6 +101,8 @@ defmodule AbotDemo.Scholarships do
         record["requirements"],
         record["how_to_apply"]
       ],
+      requirements: record["requirements"],
+      how_to_apply: record["how_to_apply"],
       note: record["notes_data_quality"],
       action: action(status_group),
       deadline: record["application_end"]

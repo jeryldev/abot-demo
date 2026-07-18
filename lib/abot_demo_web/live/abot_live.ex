@@ -15,27 +15,13 @@ defmodule AbotDemoWeb.AbotLive do
     situation: "At risk of not enrolling without financial support"
   }
 
-  @requirements [
-    %{id: "cards", label: "Grade 11 & Grade 12 (1st sem) report cards"},
-    %{
-      id: "income",
-      label: "Proof of income (ITR, Barangay Certificate of Indigency, or tax exemption)"
-    },
-    %{id: "form", label: "Application form"},
-    %{id: "enrolment", label: "Proof of enrolment / acceptance"}
-  ]
-
-  @initial_readiness %{
-    "cards" => "have",
-    "income" => "request",
-    "form" => "have",
-    "enrolment" => "not_sure"
-  }
+  @default_request_document "Barangay Certificate of Indigency"
 
   @impl true
   def mount(_params, _session, socket) do
     opportunities = Scholarships.recommendations(@student)
     selected = List.first(opportunities)
+    requirements = requirements_for(selected)
 
     {:ok,
      assign(socket,
@@ -44,12 +30,13 @@ defmodule AbotDemoWeb.AbotLive do
        student: @student,
        opportunities: opportunities,
        selected_id: selected.id,
-       requirements: @requirements,
-       readiness: @initial_readiness,
+       requirements: requirements,
+       readiness: initial_readiness(requirements),
        toast: nil,
        copied: false,
        letter_open: false,
-       letter: fallback_letter(@student, selected),
+       letter_document: @default_request_document,
+       letter: fallback_letter(@student, selected, @default_request_document),
        letter_status: :idle
      )}
   end
@@ -65,7 +52,12 @@ defmodule AbotDemoWeb.AbotLive do
   end
 
   def handle_event("select", %{"id" => id}, socket) do
-    {:noreply, assign(socket, selected_id: id, screen: :detail, toast: nil)}
+    selected = Enum.find(socket.assigns.opportunities, &(&1.id == id))
+
+    {:noreply,
+     socket
+     |> select_opportunity(selected)
+     |> assign(screen: :detail, toast: nil)}
   end
 
   def handle_event("report", _params, socket) do
@@ -95,24 +87,35 @@ defmodule AbotDemoWeb.AbotLive do
      )}
   end
 
-  def handle_event("draft_letter", _params, socket) do
+  def handle_event("draft_letter", %{"document" => document}, socket) do
     caller = self()
     opportunity = selected(socket.assigns)
+    document = String.trim(document)
 
-    Task.start(fn ->
-      result =
-        AbotDemo.OpenAI.draft_request_letter(%{
-          student: socket.assigns.student,
-          scholarship: opportunity.full_name,
-          document: "Barangay Certificate of Indigency",
-          deadline: opportunity.deadline || "the provider's current application window"
-        })
+    if document == "" do
+      {:noreply, assign(socket, toast: "Name the document you need before drafting a letter.")}
+    else
+      Task.start(fn ->
+        result =
+          AbotDemo.OpenAI.draft_request_letter(%{
+            student: socket.assigns.student,
+            scholarship: opportunity.full_name,
+            document: document,
+            deadline: opportunity.deadline || "the provider's current application window"
+          })
 
-      send(caller, {:letter_drafted, result})
-    end)
+        send(caller, {:letter_drafted, result})
+      end)
 
-    {:noreply,
-     assign(socket, letter_open: false, letter_status: :drafting, copied: false, toast: nil)}
+      {:noreply,
+       assign(socket,
+         letter_document: document,
+         letter_open: false,
+         letter_status: :drafting,
+         copied: false,
+         toast: nil
+       )}
+    end
   end
 
   @impl true
@@ -129,7 +132,12 @@ defmodule AbotDemoWeb.AbotLive do
   def handle_info({:letter_drafted, {:error, _reason}}, socket) do
     {:noreply,
      assign(socket,
-       letter: fallback_letter(socket.assigns.student, selected(socket.assigns)),
+       letter:
+         fallback_letter(
+           socket.assigns.student,
+           selected(socket.assigns),
+           socket.assigns.letter_document
+         ),
        letter_open: true,
        letter_status: :fallback,
        toast: "Live drafting is unavailable, so Abot prepared its offline fallback."
@@ -154,17 +162,48 @@ defmodule AbotDemoWeb.AbotLive do
         List.first(opportunities)
 
     socket =
-      assign(socket,
+      socket
+      |> assign(
         student: student,
         opportunities: opportunities,
         selected_id: selected.id
       )
+      |> select_opportunity(selected)
 
     if socket.assigns.letter_status == :idle do
-      assign(socket, :letter, fallback_letter(student, selected))
+      assign(socket, :letter, fallback_letter(student, selected, socket.assigns.letter_document))
     else
       socket
     end
+  end
+
+  defp select_opportunity(socket, selected) do
+    requirements = requirements_for(selected)
+
+    assign(socket,
+      selected_id: selected.id,
+      requirements: requirements,
+      readiness: initial_readiness(requirements),
+      letter_open: false,
+      letter_status: :idle,
+      letter: fallback_letter(socket.assigns.student, selected, socket.assigns.letter_document)
+    )
+  end
+
+  # Tracker requirements are source language, so only obvious list separators are split.
+  defp requirements_for(%{requirements: requirements}) when is_binary(requirements) do
+    requirements
+    |> String.split(~r/[;,]/, trim: true)
+    |> Enum.map(fn item -> item |> String.trim() |> String.replace_prefix("and ", "") end)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.with_index(1)
+    |> Enum.map(fn {label, index} -> %{id: "requirement-#{index}", label: label} end)
+  end
+
+  defp requirements_for(_), do: []
+
+  defp initial_readiness(requirements) do
+    Map.new(requirements, fn requirement -> {requirement.id, "not_sure"} end)
   end
 
   defp ready_count(readiness) do
@@ -172,6 +211,11 @@ defmodule AbotDemoWeb.AbotLive do
     |> Map.values()
     |> Enum.count(&(&1 == "have"))
   end
+
+  defp readiness_progress(_ready_count, 0), do: 0
+
+  defp readiness_progress(ready_count, requirement_count),
+    do: ready_count / requirement_count * 100
 
   defp step_class(current, step) do
     if current == step, do: "nav-step active", else: "nav-step"
@@ -185,7 +229,7 @@ defmodule AbotDemoWeb.AbotLive do
     if current == value, do: "toggle-option selected", else: "toggle-option"
   end
 
-  defp fallback_letter(student, opportunity) do
+  defp fallback_letter(student, opportunity, document) do
     deadline =
       if opportunity.deadline do
         "The official tracker lists #{format_date(opportunity.deadline)} as the application deadline."
@@ -194,9 +238,9 @@ defmodule AbotDemoWeb.AbotLive do
       end
 
     """
-    To the Office of the Barangay Captain,
+    To whom it may concern,
 
-    I am #{student.name}, a #{student.level} student and resident of #{student.location}, preparing an application for #{opportunity.full_name}. I respectfully request a Barangay Certificate of Indigency as part of my scholarship requirements. #{deadline}
+    I am #{student.name}, a #{student.level} student and resident of #{student.location}, preparing an application for #{opportunity.full_name}. I respectfully request a #{document} as part of my scholarship requirements. #{deadline}
 
     Thank you for your kind assistance.
 
@@ -213,6 +257,7 @@ defmodule AbotDemoWeb.AbotLive do
   def render(assigns) do
     assigns = assign(assigns, :selected, selected(assigns))
     assigns = assign(assigns, :ready_count, ready_count(assigns.readiness))
+    assigns = assign(assigns, :requirement_count, length(assigns.requirements))
 
     ~H"""
     <Layouts.app flash={@flash}>
@@ -295,6 +340,8 @@ defmodule AbotDemoWeb.AbotLive do
                   letter_open={@letter_open}
                   copied={@copied}
                   letter_status={@letter_status}
+                  letter_document={@letter_document}
+                  requirement_count={@requirement_count}
                   student={@student}
                   selected={@selected}
                 />
@@ -564,6 +611,8 @@ defmodule AbotDemoWeb.AbotLive do
   attr :letter_open, :boolean, required: true
   attr :copied, :boolean, required: true
   attr :letter_status, :atom, required: true
+  attr :letter_document, :string, required: true
+  attr :requirement_count, :integer, required: true
   attr :student, :map, required: true
   attr :selected, :map, required: true
 
@@ -574,12 +623,14 @@ defmodule AbotDemoWeb.AbotLive do
         <div class="screen-heading compact">
           <p class="small-label">04 / Readiness checklist</p>
           <h1>What you'll need for {@selected.program}</h1>
-          <p>Use simple readiness toggles. No uploads needed.</p>
+          <p>Provider requirements from Abot's official-source tracker. No uploads needed.</p>
         </div>
 
         <div class="readiness-meter">
-          <span>You're {@ready_count} of 4 ready.</span>
-          <div><i style={"width: #{@ready_count * 25}%"}></i></div>
+          <span>You're {@ready_count} of {@requirement_count} ready.</span>
+          <div>
+            <i style={"width: #{readiness_progress(@ready_count, @requirement_count)}%"}></i>
+          </div>
         </div>
 
         <div class="requirements-list">
@@ -616,20 +667,32 @@ defmodule AbotDemoWeb.AbotLive do
 
         <div class="callout">
           <.icon name="hero-document-text-mini" class="size-5" />
-          <span>Need a request letter? Abot can make a live draft from {@student.name}'s profile, or use its offline fallback when the connection is unavailable.</span>
+          <span>Need a request letter? Name the document you need, then Abot will draft it from {@student.name}'s profile.</span>
         </div>
 
-        <button class="primary-button" phx-click="draft_letter" disabled={@letter_status == :drafting}>
-          {if @letter_status == :drafting, do: "Drafting letter...", else: "Draft my request letter"}
-        </button>
+        <form class="letter-request-form" phx-submit="draft_letter">
+          <label class="document-request-field">
+            <span>Document to request</span>
+            <input
+              name="document"
+              type="text"
+              value={@letter_document}
+              required
+              autocomplete="off"
+            />
+          </label>
+          <button class="primary-button" type="submit" disabled={@letter_status == :drafting}>
+            {if @letter_status == :drafting, do: "Drafting letter...", else: "Draft my request letter"}
+          </button>
+        </form>
       </section>
 
       <section class="letter-panel">
         <p class="small-label">Request letter</p>
-        <h2>Barangay Certificate of Indigency</h2>
+        <h2>{@letter_document}</h2>
         <%= if @letter_status == :drafting do %>
           <p class="letter-empty">
-            Drafting a live letter from {@student.name}'s profile and the missing document...
+            Drafting a live letter from {@student.name}'s profile for {@letter_document}...
           </p>
         <% end %>
         <%= if @letter_open do %>

@@ -36,25 +36,47 @@ defmodule AbotDemoWeb.AbotLiveTest do
     |> element("button.primary-button[phx-value-screen='checklist']")
     |> render_click()
 
-    assert has_element?(view, ".readiness-meter span", "You're 2 of 4 ready.")
+    assert has_element?(view, ".requirements-list", "CHED CMSP application form")
+    assert has_element?(view, ".readiness-meter span", "You're 0 of 1 ready.")
 
     view
-    |> element("button[phx-value-id='income'][phx-value-status='have']")
+    |> element("button[phx-value-id='requirement-1'][phx-value-status='have']")
     |> render_click()
 
-    assert has_element?(view, ".readiness-meter span", "You're 3 of 4 ready.")
+    assert has_element?(view, ".readiness-meter span", "You're 1 of 1 ready.")
 
     view
-    |> element("button[phx-click='draft_letter']")
-    |> render_click()
+    |> form(".letter-request-form", %{document: "PSA Birth Certificate"})
+    |> render_submit()
 
-    assert render(view) =~ "Drafting a live letter"
+    assert has_element?(view, ".letter-empty", "PSA Birth Certificate")
 
     send(view.pid, {:letter_drafted, {:ok, "A live letter for Ana."}})
 
     assert has_element?(view, "#request-letter-text", "A live letter for Ana.")
     assert has_element?(view, "#copy-request-letter[data-copy-target='request-letter-text']")
     assert render(view) =~ "Live OpenAI draft"
+    assert has_element?(view, ".letter-panel h2", "PSA Birth Certificate")
+  end
+
+  test "changes readiness items when the selected tracker record changes", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    view
+    |> element("button[phx-value-screen='plan']")
+    |> render_click()
+
+    view
+    |> element("button[phx-value-id='dost']")
+    |> render_click()
+
+    view
+    |> element("button.primary-button[phx-value-screen='checklist']")
+    |> render_click()
+
+    assert has_element?(view, ".requirements-list", "E-application")
+    assert has_element?(view, ".requirements-list", "school/grades documents")
+    assert has_element?(view, ".readiness-meter span", "You're 0 of 3 ready.")
   end
 
   test "does not claim a correction reaches an external queue", %{conn: conn} do
