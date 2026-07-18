@@ -12,34 +12,43 @@ defmodule AbotDemo.OpenAI do
   end
 
   defp request(api_key, context) do
-    payload = %{
-      model: env("OPENAI_MODEL") || "gpt-5.6",
-      store: false,
-      max_output_tokens: 320,
-      instructions: """
-      Draft a short, formal request letter in plain text for a Philippine barangay office.
-      Use only the facts supplied. Do not invent a barangay name, documents, eligibility,
-      addresses, or contact details. Include a polite subject line, a concise request, and a
-      respectful closing. The letter will be reviewed and edited by the student before use.
-      """,
-      input: prompt(context)
-    }
+    with :ok <- ensure_req_started() do
+      payload = %{
+        model: env("OPENAI_MODEL") || "gpt-5.6",
+        store: false,
+        max_output_tokens: 320,
+        instructions: """
+        Draft a short, formal request letter in plain text for a Philippine barangay office.
+        Use only the facts supplied. Do not invent a barangay name, documents, eligibility,
+        addresses, or contact details. Include a polite subject line, a concise request, and a
+        respectful closing. The letter will be reviewed and edited by the student before use.
+        """,
+        input: prompt(context)
+      }
 
-    try do
-      case Req.post(@responses_url,
-             headers: [
-               {"authorization", "Bearer #{api_key}"},
-               {"content-type", "application/json"}
-             ],
-             json: payload,
-             receive_timeout: 12_000
-           ) do
-        {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
-        {:ok, %{status: status}} -> {:error, {:api_error, status}}
-        {:error, reason} -> {:error, {:network_error, reason}}
+      try do
+        case Req.post(@responses_url,
+               headers: [
+                 {"authorization", "Bearer #{api_key}"},
+                 {"content-type", "application/json"}
+               ],
+               json: payload,
+               receive_timeout: 12_000
+             ) do
+          {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
+          {:ok, %{status: status}} -> {:error, {:api_error, status}}
+          {:error, reason} -> {:error, {:network_error, reason}}
+        end
+      rescue
+        error -> {:error, {:request_exception, Exception.message(error)}}
       end
-    rescue
-      error -> {:error, {:request_exception, Exception.message(error)}}
+    end
+  end
+
+  defp ensure_req_started do
+    case Application.ensure_all_started(:req) do
+      {:ok, _apps} -> :ok
+      {:error, reason} -> {:error, {:client_start_error, reason}}
     end
   end
 
