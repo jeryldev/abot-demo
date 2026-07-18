@@ -25,17 +25,21 @@ defmodule AbotDemo.OpenAI do
       input: prompt(context)
     }
 
-    case Req.post(@responses_url,
-           headers: [
-             {"authorization", "Bearer #{api_key}"},
-             {"content-type", "application/json"}
-           ],
-           json: payload,
-           receive_timeout: 12_000
-         ) do
-      {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
-      {:ok, %{status: status}} -> {:error, {:api_error, status}}
-      {:error, reason} -> {:error, {:network_error, reason}}
+    try do
+      case Req.post(@responses_url,
+             headers: [
+               {"authorization", "Bearer #{api_key}"},
+               {"content-type", "application/json"}
+             ],
+             json: payload,
+             receive_timeout: 12_000
+           ) do
+        {:ok, %{status: status, body: body}} when status in 200..299 -> {:ok, body}
+        {:ok, %{status: status}} -> {:error, {:api_error, status}}
+        {:error, reason} -> {:error, {:network_error, reason}}
+      end
+    rescue
+      error -> {:error, {:request_exception, Exception.message(error)}}
     end
   end
 
@@ -81,13 +85,17 @@ defmodule AbotDemo.OpenAI do
 
   # `.env` is for the local demo only; Fly and other hosts should set real environment variables.
   defp dotenv_value(key) do
-    with {:ok, contents} <- File.read(Path.join(File.cwd!(), ".env")) do
-      Enum.find_value(String.split(contents, ~r/\R/, trim: true), fn line ->
-        case String.split(line, "=", parts: 2) do
-          [^key, value] -> value |> String.trim() |> String.trim("\"")
-          _ -> nil
-        end
-      end)
+    case File.read(Path.join(File.cwd!(), ".env")) do
+      {:ok, contents} ->
+        Enum.find_value(String.split(contents, ~r/\R/, trim: true), fn line ->
+          case String.split(line, "=", parts: 2) do
+            [^key, value] -> value |> String.trim() |> String.trim("\"")
+            _ -> nil
+          end
+        end)
+
+      {:error, _reason} ->
+        nil
     end
   end
 end
