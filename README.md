@@ -43,7 +43,8 @@ For a submission, add the Codex `/feedback` session ID to the Devpost form and k
 
 ## Deliberate Boundaries
 
-- The current build uses a deterministic sample student and seeded scholarship records so the live demo is reliable.
+- The current build uses a deterministic sample student and a checked-in tracker generated from the `Scholarships` sheet of `abot-2026-2027-scholarship-opportunities.xlsx`: 47 official-source rows last verified on 18 Jul 2026. The app keeps the source URL, date, and data-quality note for every ranked lead.
+- A regional opening is never treated as nationwide. For example, a Quezon City student sees the CHED regional-window check rather than a false claim that the MIMAROPA or Caraga CMSP window is open to them.
 - It does not claim to submit an application or send a report to an external verification queue.
 - A live model is restricted to drafting the request letter from the supplied student, document, scholarship, and deadline context. It must not invent scholarship terms or deadlines.
 
